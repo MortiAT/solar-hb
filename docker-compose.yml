@@ -6,4 +6,6 @@ services:
     volumes:
       - ./pgdata:/pgdata
     env_file: general.env
-    
+  
+  etl:
+    build: ./etl/
