@@ -7,9 +7,28 @@ services:
       - ./pgdata:/pgdata
       - ./timescale/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     env_file: general.env
+
+  postgrest:
+    image: postgrest/postgrest:latest
+    ports:
+      - "3000:3000"
+    env_file: general.env
+    depends_on:
+      - timescale
   
   etl:
     build: ./etl/
     env_file: general.env
-    environment:
-      - PYTHONUNBUFFERED=1 # needed so that pythons print output is visible in the logs
+    depends_on:
+      - timescale
+
+  webui:
+    build: ./webui/
+    ports:
+      - "5000:5000"
+    env_file: general.env
+    depends_on:
+      - timescale
+      - postgrest
+
+

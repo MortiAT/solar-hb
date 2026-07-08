@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>webui solar-hb</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .header .date {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: #f8f8f8;
+            padding: 5px;
+            border-radius: 8px;
+            margin-left: -30px;
+            margin-right: -30px;
+            margin-top: -30px;
+            padding-left: 30px;
+            padding-right: 30px;
+            padding-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        .tab-button {
+            padding: 10px 20px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #999;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button.active {
+            color: #333;
+            border-bottom-color: #ff6b6b;
+        }
+
+        .tab-button:hover {
+            color: #333;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 40px;
+            background: white;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 100%;
+            width: 100%;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-top: 40px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card.erzeugen {
+            background: linear-gradient(135deg, #ffa500 0%, #ff8c00 100%);
+            color: white;
+        }
+
+        .stat-card.eigennutzung {
+            background: linear-gradient(135deg, #ffeb3b 0%, #fbc02d 100%);
+            color: #333;
+        }
+
+        .stat-card.verbrauch {
+            background: linear-gradient(135deg, #64b5f6 0%, #42a5f5 100%);
+            color: white;
+        }
+
+        .stat-card.ladezustand {
+            background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
+            color: white;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 500;
+            opacity: 0.85;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .stat-unit {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 24px;
+            }
+
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+
+            .stat-value {
+                font-size: 22px;
+            }
+
+            .tabs {
+                margin-left: -20px;
+                margin-right: -20px;
+                padding-left: 20px;
+                padding-right: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 15px;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body data-postgrest-url="{{ postgrest_url }}">
+    <div class="container">
+        <div class="header">
+            <h1>PV Daten</h1>
+            <div class="date" id="currentDate"></div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-button active" data-tab="day">Tag</button>
+            <button class="tab-button" data-tab="month" disabled style="opacity: 0.5; cursor: not-allowed;">Monat</button>
+            <button class="tab-button" data-tab="year" disabled style="opacity: 0.5; cursor: not-allowed;">Jahr</button>
+            <button class="tab-button" data-tab="total" disabled style="opacity: 0.5; cursor: not-allowed;">Gesamt</button>
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div class="chart-container">
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Daten laden...</p>
+            </div>
+            <div id="chartWrapper" class="chart-wrapper" style="display: none;">
+                <canvas id="energyChart"></canvas>
+            </div>
+        </div>
+
+        <div class="stats" id="stats">
+            <div class="stat-card erzeugen">
+                <div class="stat-label">Erzeugung</div>
+                <div class="stat-value" id="erzeugen">-</div>
+                <div class="stat-unit">kWh</div>
+            </div>
+            <div class="stat-card eigennutzung">
+                <div class="stat-label">Eigennutzung</div>
+                <div class="stat-value" id="eigennutzung">-</div>
+                <div class="stat-unit">kWh</div>
+            </div>
+            <div class="stat-card verbrauch">
+                <div class="stat-label">Verbrauch</div>
+                <div class="stat-value" id="verbrauch">-</div>
+                <div class="stat-unit">kWh</div>
+            </div>
+            <div class="stat-card ladezustand">
+                <div class="stat-label">Ladezustand</div>
+                <div class="stat-value" id="ladezustand">-</div>
+                <div class="stat-unit">%</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const POSTGREST_URL = document.body.dataset.postgrestUrl || "http://localhost:3000";
+        let chart = null;
+
+        function updateCurrentDate() {
+            const now = new Date();
+            const options = { year: 'numeric', month: '2-digit', day: '2-digit' };
+            const formatted = now.toLocaleDateString('de-DE', options);
+            document.getElementById('currentDate').textContent = formatted;
+        }
+
+        function parseTime(value) {
+            if (!value) return null;
+            if (value instanceof Date) return value;
+
+            const normalized = String(value).replace('Z', '+00:00');
+            const parsed = new Date(normalized);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        function toNumber(value) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function buildSeriesUrl() {
+            const now = new Date();
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
+            const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0).toISOString();
+
+            const url = new URL(`${POSTGREST_URL}/sensor_data`);
+            url.searchParams.append('select', 'time,p_pv,p_load,relative_charge');
+            url.searchParams.append('time', `gte.${start}`);
+            url.searchParams.append('time', `lt.${end}`);
+            url.searchParams.append('order', 'time.asc');
+            return url.toString();
+        }
+
+        async function loadData() {
+            const loading = document.getElementById('loading');
+            const chartWrapper = document.getElementById('chartWrapper');
+            const errorDiv = document.getElementById('error');
+
+            loading.style.display = 'block';
+            chartWrapper.style.display = 'none';
+            errorDiv.style.display = 'none';
+
+            try {
+                const response = await fetch(buildSeriesUrl(), { headers: { Accept: 'application/json' } });
+                if (!response.ok) throw new Error('Datenladevorgang fehlgeschlagen');
+
+                const rows = await response.json();
+                const data = {
+                    times: [],
+                    erzeugen: [],
+                    eigennutzung: [],
+                    verbrauch: [],
+                    ladezustand: [],
+                    latest: {},
+                };
+
+                rows.forEach((row) => {
+                    const timeObj = parseTime(row.time);
+                    const pPv = toNumber(row.p_pv);
+                    const pLoad = toNumber(row.p_load);
+                    const relativeCharge = toNumber(row.relative_charge);
+
+                    data.times.push(timeObj ? timeObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '');
+                    data.erzeugen.push(pPv);
+                    data.eigennutzung.push(Math.min(pPv, pLoad));
+                    data.verbrauch.push(pLoad);
+                    data.ladezustand.push(relativeCharge);
+                });
+
+                if (rows.length > 0) {
+                    const lastRow = rows[rows.length - 1];
+                    const lastPv = toNumber(lastRow.p_pv);
+                    const lastLoad = toNumber(lastRow.p_load);
+                    const lastCharge = toNumber(lastRow.relative_charge);
+
+                    data.latest = {
+                        erzeugen: Number(lastPv.toFixed(2)),
+                        eigennutzung: Number(Math.min(lastPv, lastLoad).toFixed(2)),
+                        verbrauch: Number(lastLoad.toFixed(2)),
+                        ladezustand: Number(lastCharge.toFixed(1)),
+                    };
+                }
+
+                loading.style.display = 'none';
+                chartWrapper.style.display = 'block';
+
+                renderChart(data);
+                updateStats(data.latest);
+            } catch (error) {
+                loading.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = 'Fehler beim Laden der Daten: ' + error.message;
+                console.error(error);
+            }
+        }
+
+        function renderChart(data) {
+            const ctx = document.getElementById('energyChart').getContext('2d');
+
+            if (chart) {
+                chart.destroy();
+            }
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.times,
+                    datasets: [
+                        {
+                            label: 'Erzeugung',
+                            data: data.erzeugen,
+                            fill: true,
+                            backgroundColor: 'rgba(255, 165, 0, 0.3)',
+                            borderColor: 'rgba(255, 165, 0, 0)',
+                            tension: 0.4,
+                            pointRadius: 0,
+                            borderWidth: 0,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Eigennutzung',
+                            data: data.eigennutzung,
+                            fill: true,
+                            backgroundColor: 'rgba(255, 235, 59, 0.5)',
+                            borderColor: 'rgba(255, 235, 59, 0)',
+                            tension: 0.4,
+                            pointRadius: 0,
+                            borderWidth: 0,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Verbrauch',
+                            data: data.verbrauch,
+                            fill: false,
+                            borderColor: 'rgba(100, 181, 246, 1)',
+                            backgroundColor: 'rgba(100, 181, 246, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Ladezustand',
+                            data: data.ladezustand,
+                            fill: false,
+                            borderColor: 'rgba(76, 175, 80, 1)',
+                            borderWidth: 2.5,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15,
+                                font: { size: 12, weight: '500' },
+                                color: '#666'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            titleFont: { size: 13 },
+                            bodyFont: { size: 12 },
+                            borderColor: '#ddd',
+                            borderWidth: 1,
+                            cornerRadius: 4
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            grid: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { size: 11 },
+                                color: '#999',
+                                maxTicksLimit: 8
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            min: 0,
+                            title: {
+                                display: true,
+                                text: 'kW',
+                                font: { size: 12, weight: '600' },
+                                color: '#333'
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { size: 11 },
+                                color: '#666'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            min: 0,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: '%',
+                                font: { size: 12, weight: '600' },
+                                color: '#333'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            },
+                            ticks: {
+                                font: { size: 11 },
+                                color: '#666'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateStats(latest) {
+            if (latest) {
+                document.getElementById('erzeugen').textContent = latest.erzeugen.toFixed(2);
+                document.getElementById('eigennutzung').textContent = latest.eigennutzung.toFixed(2);
+                document.getElementById('verbrauch').textContent = latest.verbrauch.toFixed(2);
+                document.getElementById('ladezustand').textContent = latest.ladezustand.toFixed(1);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            updateCurrentDate();
+            loadData();
+            setInterval(loadData, 30000);
+        });
+    </script>
+</body>
+</html>

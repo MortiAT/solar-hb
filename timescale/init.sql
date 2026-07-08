@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
-CREATE TABLE sensor_data (
+CREATE TABLE IF NOT EXISTS sensor_data (
     time            TIMESTAMPTZ NOT NULL,
     p_akku          DOUBLE PRECISION NOT NULL,
     p_grid          DOUBLE PRECISION NOT NULL,
@@ -11,3 +11,5 @@ CREATE TABLE sensor_data (
 
 -- convert to hypertable
 SELECT create_hypertable('sensor_data', by_range('time', INTERVAL '1 month'));
+
+CREATE USER reader IN GROUP pg_read_all_data;
