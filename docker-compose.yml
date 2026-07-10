@@ -27,6 +27,8 @@ services:
     ports:
       - "5000:5000"
     env_file: general.env
+    volumes:
+      - ./webui/templates:/usr/app/templates:ro # for updating templates without rebuilding the image
     depends_on:
       - timescale
       - postgrest

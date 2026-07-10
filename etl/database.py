@@ -32,6 +32,7 @@ class DatabaseAccess:
                         values["relative_charge"]
                     ))
                     self.__conn.commit()
+                    return
 
             except psycopg2.OperationalError:
                 self.__conn.close()

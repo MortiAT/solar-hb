@@ -305,16 +305,19 @@
             return Number.isFinite(parsed) ? parsed : 0;
         }
 
+        function formatHourLabel(value) {
+            const numericValue = Number(value);
+            const hour = Math.max(0, Math.min(24, Math.floor(numericValue)));
+            const minutes = Math.max(0, Math.min(59, Math.round((numericValue - Math.floor(numericValue)) * 60)));
+            return `${String(hour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        }
+
         function buildSeriesUrl() {
             const now = new Date();
-            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
-            const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0).toISOString();
+            const day = now.toISOString().slice(0, 10);
 
-            const url = new URL(`${POSTGREST_URL}/sensor_data`);
-            url.searchParams.append('select', 'time,p_pv,p_load,relative_charge');
-            url.searchParams.append('time', `gte.${start}`);
-            url.searchParams.append('time', `lt.${end}`);
-            url.searchParams.append('order', 'time.asc');
+            const url = new URL(`${POSTGREST_URL}/rpc/get_sensor_data_for_day`);
+            url.searchParams.append('day_str', `${day}`);
             return url.toString();
         }
 
@@ -328,12 +331,12 @@
             errorDiv.style.display = 'none';
 
             try {
+                console.log("asdfasdfasdf", buildSeriesUrl())
                 const response = await fetch(buildSeriesUrl(), { headers: { Accept: 'application/json' } });
                 if (!response.ok) throw new Error('Datenladevorgang fehlgeschlagen');
 
                 const rows = await response.json();
                 const data = {
-                    times: [],
                     erzeugen: [],
                     eigennutzung: [],
                     verbrauch: [],
@@ -346,14 +349,26 @@
                     const pPv = toNumber(row.p_pv);
                     const pLoad = toNumber(row.p_load);
                     const relativeCharge = toNumber(row.relative_charge);
+                    const eigener = Math.min(pPv, pLoad);
 
-                    data.times.push(timeObj ? timeObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '');
-                    data.erzeugen.push(pPv);
-                    data.eigennutzung.push(Math.min(pPv, pLoad));
-                    data.verbrauch.push(pLoad);
-                    data.ladezustand.push(relativeCharge);
+                    if (!timeObj) return;
+
+                    const hourValue = timeObj.getHours() + (timeObj.getMinutes() / 60) + (timeObj.getSeconds() / 3600);
+
+                    data.erzeugen.push({ x: hourValue, y: pPv });
+                    data.eigennutzung.push({ x: hourValue, y: Math.abs(eigener) });
+                    data.verbrauch.push({ x: hourValue, y: Math.abs(pLoad) });
+                    data.ladezustand.push({ x: hourValue, y: relativeCharge });
                 });
 
+                data.erzeugen.sort((a, b) => a.x - b.x);
+                data.eigennutzung.sort((a, b) => a.x - b.x);
+                data.verbrauch.sort((a, b) => a.x - b.x);
+                data.ladezustand.sort((a, b) => a.x - b.x);
+
+                console.log("data", data)
+
+                // TODO: fetch data from api more frequently and from source                
                 if (rows.length > 0) {
                     const lastRow = rows[rows.length - 1];
                     const lastPv = toNumber(lastRow.p_pv);
@@ -362,8 +377,8 @@
 
                     data.latest = {
                         erzeugen: Number(lastPv.toFixed(2)),
-                        eigennutzung: Number(Math.min(lastPv, lastLoad).toFixed(2)),
-                        verbrauch: Number(lastLoad.toFixed(2)),
+                        eigennutzung: Number(Math.abs(Math.min(lastPv, lastLoad)).toFixed(2)),
+                        verbrauch: Number(Math.abs(lastLoad).toFixed(2)),
                         ladezustand: Number(lastCharge.toFixed(1)),
                     };
                 }
@@ -391,50 +406,50 @@
             chart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: data.times,
                     datasets: [
-                        {
-                            label: 'Erzeugung',
-                            data: data.erzeugen,
-                            fill: true,
-                            backgroundColor: 'rgba(255, 165, 0, 0.3)',
-                            borderColor: 'rgba(255, 165, 0, 0)',
-                            tension: 0.4,
-                            pointRadius: 0,
-                            borderWidth: 0,
-                            yAxisID: 'y'
-                        },
-                        {
-                            label: 'Eigennutzung',
-                            data: data.eigennutzung,
-                            fill: true,
-                            backgroundColor: 'rgba(255, 235, 59, 0.5)',
-                            borderColor: 'rgba(255, 235, 59, 0)',
-                            tension: 0.4,
-                            pointRadius: 0,
-                            borderWidth: 0,
-                            yAxisID: 'y'
-                        },
                         {
                             label: 'Verbrauch',
                             data: data.verbrauch,
                             fill: false,
-                            borderColor: 'rgba(100, 181, 246, 1)',
-                            backgroundColor: 'rgba(100, 181, 246, 0.1)',
+                            borderColor: 'rgba(140, 186, 210, 1)',
                             borderWidth: 2,
-                            tension: 0.4,
+                            tension: 0.3,
                             pointRadius: 0,
+                            spanGaps: true,
                             yAxisID: 'y'
                         },
                         {
                             label: 'Ladezustand',
                             data: data.ladezustand,
                             fill: false,
-                            borderColor: 'rgba(76, 175, 80, 1)',
-                            borderWidth: 2.5,
+                            borderColor: 'rgba(47, 160, 63, 1)',
+                            borderWidth: 2,
                             tension: 0.4,
                             pointRadius: 0,
+                            spanGaps: true,
                             yAxisID: 'y1'
+                        },
+                        {
+                            label: 'Eigennutzung',
+                            data: data.eigennutzung,
+                            fill: true,
+                            backgroundColor: 'rgba(255, 224, 1, 1.0)',
+                            tension: 0.4,
+                            pointRadius: 0,
+                            borderWidth: 0,
+                            spanGaps: true,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Erzeugung',
+                            data: data.erzeugen,
+                            fill: true,
+                            backgroundColor: 'rgba(255, 180, 0, 1.0)',
+                            tension: 0.4,
+                            pointRadius: 0,
+                            borderWidth: 0,
+                            spanGaps: true,
+                            yAxisID: 'y'
                         }
                     ]
                 },
@@ -463,11 +478,25 @@
                             bodyFont: { size: 12 },
                             borderColor: '#ddd',
                             borderWidth: 1,
-                            cornerRadius: 4
+                            cornerRadius: 4,
+                            callbacks: {
+                                title: (items) => {
+                                    const item = items[0];
+                                    const xValue = item?.parsed?.x ?? item?.raw?.x;
+                                    return xValue === undefined ? '' : formatHourLabel(xValue);
+                                },
+                                label: (context) => {
+                                    const value = context.parsed?.y ?? context.raw?.y;
+                                    return `${context.dataset.label}: ${Number(value).toFixed(2)}`;
+                                }
+                            }
                         }
                     },
                     scales: {
                         x: {
+                            type: 'linear',
+                            min: 0,
+                            max: 24,
                             display: true,
                             grid: {
                                 display: true,
@@ -475,9 +504,16 @@
                                 drawBorder: false
                             },
                             ticks: {
+                                stepSize: 2,
                                 font: { size: 11 },
                                 color: '#999',
-                                maxTicksLimit: 8
+                                callback: (value) => formatHourLabel(value)
+                            },
+                            title: {
+                                display: true,
+                                text: 'Uhrzeit',
+                                font: { size: 12, weight: '600' },
+                                color: '#333'
                             }
                         },
                         y: {
@@ -538,7 +574,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             updateCurrentDate();
             loadData();
-            setInterval(loadData, 30000);
+            setInterval(loadData, 180000);
         });
     </script>
 </body>

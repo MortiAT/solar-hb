@@ -1,8 +1,12 @@
 from flask import Flask, render_template
 import os
 
-app = Flask(__name__)
+class DevelopmentConfig:  
+    DEBUG = True
+    TEMPLATES_AUTO_RELOAD = True 
 
+app = Flask(__name__)
+app.config.from_object(DevelopmentConfig) 
 
 @app.route('/')
 def index():
