@@ -26,3 +26,26 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION get_sensor_data_for_day(day_str text) TO reader;
+
+CREATE OR REPLACE FUNCTION get_sensor_data_date_range()
+RETURNS TABLE (earliest_date date, latest_date date)
+LANGUAGE sql
+AS $$
+  SELECT MIN(time)::date, MAX(time)::date
+  FROM sensor_data;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_sensor_data_date_range() TO reader;
+
+CREATE OR REPLACE FUNCTION get_sensor_data_for_range(day_start text, day_end text)
+RETURNS SETOF sensor_data
+LANGUAGE sql
+AS $$
+  SELECT *
+  FROM sensor_data
+  WHERE time >= day_start::date
+    AND time <= day_end::date
+  ORDER BY time;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_sensor_data_for_range(day_start text, day_end text) TO reader;

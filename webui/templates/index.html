@@ -135,6 +135,70 @@
             color: #333;
         }
 
+        .range-dialog {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: none;
+            border-radius: 8px;
+            padding: 25px;
+            margin: 0;
+            width: min(420px, calc(100% - 30px));
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .range-dialog::backdrop {
+            background: rgba(0, 0, 0, 0.35);
+        }
+
+        .range-dialog h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 20px;
+        }
+
+        .range-fields {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .range-field {
+            display: grid;
+            gap: 5px;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .range-field input {
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 14px;
+        }
+
+        .range-dialog-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .range-dialog-actions button {
+            border: 1px solid #d9d9d9;
+            background: #fff;
+            border-radius: 6px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .range-dialog-actions .primary {
+            border-color: #ff6b6b;
+            background: #ff6b6b;
+            color: white;
+        }
+
         .chart-container {
             position: relative;
             height: 400px;
@@ -301,7 +365,28 @@
             <button class="tab-button" data-tab="month" disabled style="opacity: 0.5; cursor: not-allowed;">Monat</button>
             <button class="tab-button" data-tab="year" disabled style="opacity: 0.5; cursor: not-allowed;">Jahr</button>
             <button class="tab-button" data-tab="total" disabled style="opacity: 0.5; cursor: not-allowed;">Gesamt</button>
+            <button class="tab-button" type="button" id="rangeDownloadButton">Zeitraum herunterladen</button>
         </div>
+
+        <dialog class="range-dialog" id="rangeDialog">
+            <form id="rangeDownloadForm">
+                <h2>Zeitraum herunterladen</h2>
+                <div class="range-fields">
+                    <label class="range-field" for="rangeStartDate">
+                        Von
+                        <input type="date" id="rangeStartDate" required>
+                    </label>
+                    <label class="range-field" for="rangeEndDate">
+                        Bis
+                        <input type="date" id="rangeEndDate" required>
+                    </label>
+                </div>
+                <div class="range-dialog-actions">
+                    <button type="button" id="closeRangeDialogButton">Abbrechen</button>
+                    <button class="primary" type="submit">CSV herunterladen</button>
+                </div>
+            </form>
+        </dialog>
 
         <div id="error" class="error" style="display: none;"></div>
 
@@ -403,6 +488,17 @@
             return url.toString();
         }
 
+        function buildRangeDownloadUrl(startDate, endDate) {
+            const url = new URL(`${POSTGREST_URL}/rpc/get_sensor_data_for_range`);
+            url.searchParams.append('day_start', startDate);
+            url.searchParams.append('day_end', endDate);
+            return url.toString();
+        }
+
+        function buildDateRangeUrl() {
+            return `${POSTGREST_URL}/rpc/get_sensor_data_date_range`;
+        }
+
         async function downloadCsv() {
             const response = await fetch(buildSeriesUrl(), { headers: { Accept: 'text/csv' } });
             if (!response.ok) throw new Error('CSV-Download fehlgeschlagen');
@@ -416,6 +512,43 @@
             link.click();
             link.remove();
             URL.revokeObjectURL(downloadUrl);
+        }
+
+        async function downloadRangeCsv(startDate, endDate) {
+            const response = await fetch(buildRangeDownloadUrl(startDate, endDate), {
+                headers: { Accept: 'text/csv' }
+            });
+            if (!response.ok) throw new Error('CSV-Download fehlgeschlagen');
+
+            const csvBlob = await response.blob();
+            const downloadUrl = URL.createObjectURL(csvBlob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `pv-daten-${startDate}-bis-${endDate}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(downloadUrl);
+        }
+
+        async function loadAvailableDateRange(startInput, endInput) {
+            const response = await fetch(buildDateRangeUrl(), {
+                headers: { Accept: 'application/json' }
+            });
+            if (!response.ok) throw new Error('Zeitraum konnte nicht geladen werden');
+
+            const rows = await response.json();
+            const dateRange = rows[0];
+            if (!dateRange?.earliest_date || !dateRange?.latest_date) {
+                throw new Error('Ungültiger Zeitraum vom Server');
+            }
+
+            startInput.min = dateRange.earliest_date;
+            startInput.max = dateRange.latest_date;
+            endInput.min = dateRange.earliest_date;
+            endInput.max = dateRange.latest_date;
+            startInput.value = dateRange.earliest_date;
+            endInput.value = dateRange.latest_date;
         }
 
         async function loadData() {
@@ -672,6 +805,12 @@
             const prevDayButton = document.getElementById('prevDayButton');
             const nextDayButton = document.getElementById('nextDayButton');
             const downloadCsvButton = document.getElementById('downloadCsvButton');
+            const rangeDownloadButton = document.getElementById('rangeDownloadButton');
+            const rangeDialog = document.getElementById('rangeDialog');
+            const rangeDownloadForm = document.getElementById('rangeDownloadForm');
+            const closeRangeDialogButton = document.getElementById('closeRangeDialogButton');
+            const rangeStartDate = document.getElementById('rangeStartDate');
+            const rangeEndDate = document.getElementById('rangeEndDate');
 
             const today = new Date();
             const initialDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -700,8 +839,45 @@
                 });
             });
 
+            rangeDownloadButton.addEventListener('click', function() {
+                rangeDialog.showModal();
+                loadAvailableDateRange(rangeStartDate, rangeEndDate).catch((error) => {
+                    rangeDialog.close();
+                    const errorDiv = document.getElementById('error');
+                    errorDiv.style.display = 'block';
+                    errorDiv.textContent = 'Fehler beim Laden des verfügbaren Zeitraums: ' + error.message;
+                    console.error(error);
+                });
+            });
+
+            closeRangeDialogButton.addEventListener('click', function() {
+                rangeDialog.close();
+            });
+
+            rangeDownloadForm.addEventListener('submit', function(event) {
+                event.preventDefault();
+                const startDate = rangeStartDate.value;
+                const endDate = rangeEndDate.value;
+
+                if (startDate > endDate) {
+                    rangeEndDate.setCustomValidity('Das Enddatum muss nach dem Startdatum liegen.');
+                    rangeEndDate.reportValidity();
+                    return;
+                }
+
+                rangeEndDate.setCustomValidity('');
+                downloadRangeCsv(startDate, endDate)
+                    .then(() => rangeDialog.close())
+                    .catch((error) => {
+                        const errorDiv = document.getElementById('error');
+                        errorDiv.style.display = 'block';
+                        errorDiv.textContent = 'Fehler beim Herunterladen der CSV-Datei: ' + error.message;
+                        console.error(error);
+                    });
+            });
+
             loadData();
-            setInterval(loadData, 180000);
+            // setInterval(loadData, 180000);
         });
     </script>
 </body>
